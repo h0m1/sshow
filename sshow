@@ -10,6 +10,8 @@ import os, os.path
 import zipfile
 import shutil
 
+from logging.handlers import RotatingFileHandler
+
 IMAGEPATH="/tmp/imgs"
 ZIPDIR="/tmp"
 ZIPFILE = "images.zip"
@@ -69,6 +71,7 @@ class App(tk.Tk):
                 raise Exception("not a directory %s" % IMAGEPATH)
             self.load_files()
             zip = os.path.join(ZIPDIR, ZIPFILE)
+            zipbak = os.path.join(ZIPDIR, ("_%s" % ZIPFILE))
             if not os.path.exists(zip):
                 logging.debug("no zipfile")
                 return
@@ -82,7 +85,9 @@ class App(tk.Tk):
                 logging.debug("try to extract %s" % zip)
                 z.extractall(IMAGEPATH)
             self.load_files(override = True)
-            os.remove(zip)
+            if os.path.exists(zipbak):
+                os.remove(zipbak)
+            os.rename(zip, zipbak)
         except Exception as e:
             logging.error(e)
             self.images = None
@@ -110,11 +115,17 @@ if __name__ == '__main__':
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
+
+    handler1 = logging.StreamHandler(sys.stdout)
+    handler1.setLevel(logging.DEBUG)
+    handler1.setFormatter(formatter)
+    root.addHandler(handler1)
+
+    handler2 = RotatingFileHandler('/tmp/sshow.log', maxBytes=(1024*1024), backupCount=2)
+    handler2.setLevel(logging.DEBUG)
+    handler2.setFormatter(formatter)
+    root.addHandler(handler2)
 
     win = App()
     win.after(100, win.update)
