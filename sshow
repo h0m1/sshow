@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+
+import tkinter as tk
+from PIL import Image, ImageTk
+from itertools import cycle
+import logging
+import sys
+import re
+import os, os.path
+import zipfile
+import shutil
+
+IMAGEPATH="/tmp/imgs"
+ZIPDIR="/tmp"
+ZIPFILE = "images.zip"
+FACTOR=1000
+
+class App(tk.Tk):
+    def __init__(self):
+        logging.debug("__init__")
+        tk.Tk.__init__(self)
+        self.attributes('-fullscreen', True)
+        self.canvas = tk.Canvas(self, highlightthickness=0, bg='black')
+        self.canvas.pack(fill=tk.BOTH, expand=1)
+        self.images = None
+        self.last_image = None
+    def update(self):
+        time = 1
+        try:
+            logging.debug("update")
+            self.update_images()
+            if self.images == None:
+                self.clean()
+                logging.warn("no images found")
+                self.after(time * FACTOR, self.update)
+                return
+            fname = next(self.images)
+            time = get_time(fname)
+            logging.debug("time %d" % time)
+            img = self.load_image(fname)
+            self.last_image = self.canvas.create_image((0,0), image=img, anchor=tk.NW)
+            self.canvas.image = img
+        except Exception as e:
+            logging.error(e)
+        self.after(time * FACTOR, self.update)
+    def load_image(self, filename):
+        logging.debug("load image %s" % filename)
+        image = Image.open(os.path.join(IMAGEPATH, filename))
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        image = image.resize((w, h), Image.ANTIALIAS)
+        photo = ImageTk.PhotoImage(image)
+        return photo
+    def load_files(self, override=False):
+        try:
+            logging.debug("load_files")
+            # nur wenn es keine dateien gibt
+            if self.images and not override:
+                return
+            self.images = cycle(sorted([ f for f in os.listdir(IMAGEPATH) if os.path.isfile(os.path.join(IMAGEPATH, f)) and re.match(r"[0-9]+_[0-9]+_.*\.(jpg|png)", f) ], key=lambda e: e.split("_")[0]))
+        except Exception as e:
+            logging.error(e)
+    def update_images(self):
+        try:
+            logging.debug("update images")
+            if not os.path.exists(IMAGEPATH):
+                os.makedirs(IMAGEPATH)
+            if os.path.exists(IMAGEPATH) and not os.path.isdir(IMAGEPATH):
+                raise Exception("not a directory %s" % IMAGEPATH)
+            self.load_files()
+            zip = os.path.join(ZIPDIR, ZIPFILE)
+            if not os.path.exists(zip):
+                logging.debug("no zipfile")
+                return
+            if not os.path.isfile(zip):
+                logging.warn("is not a zipfile %s" % zip)
+                return
+            shutil.rmtree(IMAGEPATH)
+            os.makedirs(IMAGEPATH)
+            self.clean()
+            with zipfile.ZipFile(zip, 'r') as z:
+                logging.debug("try to extract %s" % zip)
+                z.extractall(IMAGEPATH)
+            self.load_files(override = True)
+            os.remove(zip)
+        except Exception as e:
+            logging.error(e)
+            self.images = None
+    def clean(self):
+        logging.debug("clean")
+        if self.last_image:
+            logging.debug("clear canvas")
+            self.canvas.delete(self.last_image)
+            self.last_image = None
+        self.images = None
+
+
+def sort_key(fname):
+    items = fname.split("_")
+    return int(items[0])
+
+def get_time(fname):
+    try:
+        return int(fname.split("_")[1])
+    except Exception as e:
+        logging.error(e)
+        return 1
+
+if __name__ == '__main__':
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+
+    win = App()
+    win.after(100, win.update)
+    win.mainloop()
